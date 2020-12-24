@@ -48,7 +48,7 @@ np.random.seed(7)
 
 def create_model(timesteps):
 	model = Sequential()
-	model.add(LSTM(options.units, return_sequences = True, input_shape=(1, timesteps)))
+	model.add(LSTM(50, return_sequences = True, input_shape=(1, timesteps)))
 	model.add(Dropout(0.1))
 	model.add(LSTM(units = 50, return_sequences = True))
 	model.add(LSTM(units = 50))
@@ -121,7 +121,7 @@ def run(model_type, training_years=9, timesteps=1):
 			history_callback = model.fit(trainX, trainY, batch_size=options.batchsize, 
 			verbose=2, epochs = options.epoch,
 			validation_data=(testX, testY))
-			
+
 			trainPredict = model.predict(trainX)
 			testPredict = model.predict(testX)
 			# invert predictions
@@ -290,10 +290,11 @@ if __name__ == '__main__':
 	parser = OptionParser()
 	parser.add_option('-b','--batchsize', type="int",default = 128, help='specify the batch size')
 	parser.add_option('-e','--epoch', type="int",default = 200, help='specific number of epoch')
-	parser.add_option('-u','--units', type="int",default = 50, help='units for lstm')
 	parser.add_option('-m','--model_type', default = 'lstm', help='model type, support: lstm, svm, rf, autoreg')
 	parser.add_option('-y','--training_years',type="int", default = 9, help='number of training years, 9, 10, and 11')
 	parser.add_option('-t','--timesteps',type="int", default = 1, help='timestep for lstm, default = 1')
 
 	(options, args) = parser.parse_args()
+	if options.model_type != 'lstm':
+		options.timesteps = 1
 	run(model_type=options.model_type, training_years=options.training_years, timesteps=options.timesteps)
