@@ -24,6 +24,7 @@ from statsmodels.tsa.ar_model import AutoReg
 from visualize import plot_stock_price
 from bokeh.plotting import figure, ColumnDataSource
 from bokeh.io import export_png
+from sklearn.model_selection import GridSearchCV
 
 os.environ["CUDA_VISIBLE_DEVICES"] = '0' #use GPU with ID=0
 config = tf.ConfigProto()
@@ -59,7 +60,19 @@ def create_model(timesteps):
 	return model
 
 def create_rf(rf_n_estimators=500,rf_max_depth=-1,rf_min_samples_split=3 , rf_random_state = None, rf_max_features=5):
-	model = RandomForestRegressor(n_estimators=rf_n_estimators, min_samples_split=rf_min_samples_split, random_state= rf_random_state, max_features='auto')
+
+	# model = RandomForestRegressor(n_estimators=rf_n_estimators, min_samples_split=rf_min_samples_split, random_state= rf_random_state, max_features='auto')
+	if options.grid:
+		param_grid = {
+			'n_estimators': [10, 100, 200, 300, 500],
+			'max_leaf_nodes' : [10, 30, 50, 70, 90]
+		}
+		rf = RandomForestRegressor()
+		grid_search = GridSearchCV(estimator = rf, param_grid = param_grid, 
+							cv = 3, n_jobs = -1, verbose = 2)
+		return grid_search
+	model = RandomForestRegressor(n_estimators=rf_n_estimators, min_samples_split=rf_min_samples_split, 
+								random_state= rf_random_state, max_features='sqrt', criterion='mae', max_leaf_nodes=70)
 	return model
 
 def create_svm():
@@ -169,6 +182,10 @@ def run(model_type, training_years=9, timesteps=1):
 
 			if model_type in ['rf', 'svm']:
 				model.fit(trainX, trainY)
+				if options.grid and model_type == 'rf':
+					print("Best params for RF:")
+					print(model.best_params_)
+					model = model.best_estimator_
 				trainPredict = model.predict(trainX)
 				testPredict = model.predict(testX)
 			if model_type == 'autoreg':
@@ -290,9 +307,10 @@ if __name__ == '__main__':
 	parser = OptionParser()
 	parser.add_option('-b','--batchsize', type="int",default = 128, help='specify the batch size')
 	parser.add_option('-e','--epoch', type="int",default = 200, help='specific number of epoch')
-	parser.add_option('-m','--model_type', default = 'lstm', help='model type, support: lstm, svm, rf, autoreg')
+	parser.add_option('-m','--model_type', default = 'rf', help='model type, support: lstm, svm, rf, autoreg')
 	parser.add_option('-y','--training_years',type="int", default = 9, help='number of training years, 9, 10, and 11')
 	parser.add_option('-t','--timesteps',type="int", default = 1, help='timestep for lstm, default = 1')
+	parser.add_option('-g','--grid', type="int", default = 1, help='Grid search for optimal parameters, apply for RF')
 
 	(options, args) = parser.parse_args()
 	if options.model_type != 'lstm':
