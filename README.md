@@ -1,6 +1,6 @@
 # Time Step configuration on Long Short-Term Memory Model for Taiwanese Stock Forecast
 
-This code is the implementation of the paper **An Investigation on Time Step of Long Short-Term Memory Model for Taiwanese Stock Forecast**
+This code is the implementation of the paper **An Effective Way for Taiwanese Stock Price prediction: Boosting the performance with Machine Learning Techniques**
 
 ## Installation
 
