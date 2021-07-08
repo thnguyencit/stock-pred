@@ -5,8 +5,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from pandas import read_csv, read_excel
 import math
-from keras.models import Sequential
-from keras.layers import LSTM, Dropout, Dense
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import LSTM, Dropout, Dense
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.metrics import mean_squared_error, mean_absolute_error
 from sklearn.svm import SVR
@@ -15,9 +15,9 @@ import os
 from sklearn.ensemble import RandomForestRegressor
 import plotly.graph_objects as go
 import pandas as pd
-from keras_sequential_ascii import keras2ascii
+# from keras_sequential_ascii import keras2ascii
 import tensorflow as tf
-from keras.callbacks import ModelCheckpoint, EarlyStopping
+from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping
 import pickle
 from statsmodels.tsa.ar_model import AutoReg
 
@@ -25,18 +25,19 @@ from visualize import plot_stock_price
 from bokeh.plotting import figure, ColumnDataSource
 from bokeh.io import export_png
 from sklearn.model_selection import GridSearchCV
+from tqdm import tqdm
 
 os.environ["CUDA_VISIBLE_DEVICES"] = '0' #use GPU with ID=0
-config = tf.ConfigProto()
-config.gpu_options.per_process_gpu_memory_fraction = 0.5 # maximun alloc gpu50% of MEM
-config.gpu_options.allow_growth = True #allocate dynamically
-sess = tf.Session(config = config)
+# config = tf.ConfigProto()
+# config.gpu_options.per_process_gpu_memory_fraction = 0.5 # maximun alloc gpu50% of MEM
+# config.gpu_options.allow_growth = True #allocate dynamically
+# sess = tf.Session(config = config)
 
 # convert an array of values into a dataset matrix
 def create_dataset(dataset, timesteps=1):
 	dataX, dataY = [], []
 	r = len(dataset)-timesteps-1
-	for i in range(r):
+	for i in tqdm(range(r)):
 		a = dataset[i:(i+timesteps), 0]
 		dataX.append(a)
 		dataY.append(dataset[i + timesteps, 0])
@@ -56,23 +57,31 @@ def create_model(timesteps):
 	model.add(Dense(1))
 	model.summary()
 	model.compile(loss='mean_squared_error', optimizer='adam', metrics = [tf.keras.metrics.RootMeanSquaredError()])
-	keras2ascii(model) 
+	# keras2ascii(model) 
 	return model
 
-def create_rf(rf_n_estimators=500,rf_max_depth=-1,rf_min_samples_split=3 , rf_random_state = None, rf_max_features=5):
+def create_rf(rf_n_estimators=500,rf_min_samples_split=3 , rf_random_state = None):
 
 	# model = RandomForestRegressor(n_estimators=rf_n_estimators, min_samples_split=rf_min_samples_split, random_state= rf_random_state, max_features='auto')
-	if options.grid:
+	if options.grid: # {'max_leaf_nodes': 90, 'n_estimators': 10}
 		param_grid = {
 			'n_estimators': [10, 100, 200, 300, 500],
 			'max_leaf_nodes' : [10, 30, 50, 70, 90]
+			# 'n_estimators': [10],
+			# 'max_leaf_nodes' : [10]
 		}
 		rf = RandomForestRegressor()
 		grid_search = GridSearchCV(estimator = rf, param_grid = param_grid, 
-							cv = 3, n_jobs = -1, verbose = 2)
+							cv = 3, n_jobs = 8, verbose = 2)
 		return grid_search
 	model = RandomForestRegressor(n_estimators=rf_n_estimators, min_samples_split=rf_min_samples_split, 
 								random_state= rf_random_state, max_features='sqrt', criterion='mae', max_leaf_nodes=70)
+	return model
+
+def create_rf_specific(rf_n_estimators=10,rf_max_depth=-1,rf_min_samples_split=3 , 
+			rf_random_state = None, rf_max_features=10,max_leaf_nodes=90):
+	model = RandomForestRegressor(n_estimators=rf_n_estimators, min_samples_split=rf_min_samples_split, 
+	random_state= rf_random_state, max_features='sqrt', criterion='mae', max_leaf_nodes=max_leaf_nodes)
 	return model
 
 def create_svm():
@@ -86,164 +95,183 @@ def create_autoreg(train):
 # normalize the dataset
 scaler = MinMaxScaler(feature_range=(0, 1))
 
-save_path = os.path.join(os.getcwd(), "stock", "results")
+save_path = os.path.join(os.getcwd(), "results")
 
 if not os.path.isdir(save_path):
 	os.mkdir(save_path)
 
+def create_ds():
+	print("CREATING DATESET")
+	prefix = 'taiwan_stock_price'
+	df2 = pd.read_csv(os.path.join(os.getcwd(), "data",'taiwan_stock_price.csv'), delimiter=',')
+	df2.dataframeName = 'taiwan_stock_price.csv'
+	prices = df2['close']
+	train_size = int(len(prices) * 0.7)
+	return prices.to_numpy(), train_size, prefix, None
+	
+
+def create_taiex(training_years):
+	prefix = 'TAIEX'
+	print("Creating data from {}".format(prefix))
+	_prefix = os.path.join(os.getcwd(), "data",'{}*'.format(prefix))
+	file_names = glob.glob(_prefix)
+	# create dataset
+	stock_prices = np.array([])
+	dates = np.array([])
+	vis_stock = np.array([])
+	real_test = np.array([])
+	real_date = np.array([])
+	train_size = 0
+	for index,file_name in enumerate(file_names):
+		dataset = read_excel(file_name, header=None, usecols=[1])
+		date = read_excel(file_name, header=None, usecols=[0])
+		date = date.astype('str').values.tolist()
+		date = [x[0] for x in date]
+		_stock_prices = dataset.astype('float32').to_numpy()
+		stock_prices = np.append(stock_prices, _stock_prices)
+		if train_size !=0:
+			real_test = np.append(real_test, _stock_prices)
+			real_date = np.append(real_date, date)
+		if index == training_years:
+			train_size = len(stock_prices)
+		dates = np.append(dates, date)
+
+	return stock_prices, train_size, prefix, real_date
+
 def run(model_type, training_years=9, timesteps=1):
-	prefix_dataset = ['TAIEX']
-	for prefix in prefix_dataset:
-		print("Creating data from {}".format(prefix))
-		_prefix = os.path.join(os.getcwd(), "stock", "data",'{}*'.format(prefix))
-		file_names = glob.glob(_prefix)
-		# create dataset
-		stock_prices = np.array([])
-		dates = np.array([])
-		vis_stock = np.array([])
-		real_test = np.array([])
-		real_date = np.array([])
-		train_size = 0
-		for index,file_name in enumerate(file_names):
-			dataset = read_excel(file_name, header=None, usecols=[1])
-			date = read_excel(file_name, header=None, usecols=[0])
-			date = date.astype('str').values.tolist()
-			date = [x[0] for x in date]
-			_stock_prices = dataset.astype('float32').to_numpy()
-			stock_prices = np.append(stock_prices, _stock_prices)
-			if train_size !=0:
-				real_test = np.append(real_test, _stock_prices)
-				real_date = np.append(real_date, date)
-			if index == training_years:
-				train_size = len(stock_prices)
-			dates = np.append(dates, date)
-			
-		test_size = len(stock_prices) - train_size
-		stock_prices = stock_prices.reshape(-1,1)
-		stock_prices = scaler.fit_transform(stock_prices)
-		train, test = stock_prices[0:train_size,:], stock_prices[train_size:len(stock_prices),:]
 
-		trainX, trainY = create_dataset(train, timesteps)
-		testX, testY = create_dataset(test, timesteps)
-		if model_type == 'lstm':
-			# reshape input to be [samples, features, time steps]
-			trainX = trainX.reshape(trainX.shape[0], 1, timesteps)
-			testX = testX.reshape(testX.shape[0], 1, timesteps)
-			model = create_model(timesteps)
-			
-			history_callback = model.fit(trainX, trainY, batch_size=options.batchsize, 
-			verbose=2, epochs = options.epoch,
-			validation_data=(testX, testY))
+	stock_prices, train_size, prefix, real_date = create_taiex(training_years)
+	# stock_prices, train_size, prefix, real_date = create_ds()
+	index = training_years
 
+	test_size = len(stock_prices) - train_size
+	stock_prices = stock_prices.reshape(-1,1)
+	stock_prices = scaler.fit_transform(stock_prices)
+	train, test = stock_prices[0:train_size,:], stock_prices[train_size:len(stock_prices),:]
+
+	trainX, trainY = create_dataset(train, timesteps)
+	testX, testY = create_dataset(test, timesteps)
+	if model_type == 'lstm':
+		# reshape input to be [samples, features, time steps]
+		trainX = trainX.reshape(trainX.shape[0], 1, timesteps)
+		testX = testX.reshape(testX.shape[0], 1, timesteps)
+		model = create_model(timesteps)
+		
+		history_callback = model.fit(trainX, trainY, batch_size=options.batchsize, 
+		verbose=2, epochs = options.epoch,
+		validation_data=(testX, testY))
+
+		trainPredict = model.predict(trainX)
+		testPredict = model.predict(testX)
+		# invert predictions
+		trainPredict = scaler.inverse_transform(trainPredict)
+		trainY = scaler.inverse_transform([trainY])
+		testPredict = scaler.inverse_transform(testPredict)
+		testY = scaler.inverse_transform([testY])
+		# calculate root mean squared error
+		trainScore_mae = mean_absolute_error(trainY[0], trainPredict[:,0])
+		trainScore_rmse = math.sqrt(mean_squared_error(trainY[0], trainPredict[:,0]))
+		print("LSTM on {} training years".format(training_years))
+		print('Train Score: RMSE= ' + str (trainScore_rmse) + ' mae='+ str (trainScore_mae))
+		testScore_rmse = math.sqrt(mean_squared_error(testY[0], testPredict[:,0]))
+		testScore_mae = mean_absolute_error(testY[0], testPredict[:,0])
+		print('Test Score: RMSE= '+ str (testScore_rmse) + ' mae='+str (testScore_mae))
+		
+		train_loss = history_callback.history['loss']
+		val_loss = history_callback.history['val_loss']
+
+		plt.plot(train_loss)
+		plt.plot(val_loss)
+		plt.title('Long Short-term Memory - Model loss')
+		plt.ylabel('Loss')
+		plt.xlabel('Epoch')
+		plt.legend(['Training loss', 'Validation loss'], loc='upper right')
+		img_path = os.path.join(save_path,'{}_training_years_val_loss_'.format(training_years) + '_{}_{}'.format(prefix, index) + '_{}_'.format('LSTM') + '_testing_' + '.png')
+		plt.savefig(img_path)
+		plt.figure().clear()
+	else:
+		trainX = np.reshape(trainX, (trainX.shape[0], trainX.shape[1]))
+		testX = np.reshape(testX, (testX.shape[0], testX.shape[1]))
+		trainY = trainY.ravel()
+		testY = testY.ravel()
+		
+		if model_type == 'rf':
+			model = create_rf()
+		elif model_type == 'svm':
+			model = create_svm()
+		elif model_type == 'autoreg':
+			trainX = np.squeeze(trainX)
+			testX = np.squeeze(testX)
+			model = create_autoreg(trainX)
+		else:
+			raise("Model exeption")
+
+		print("Training")
+
+		if model_type in ['rf', 'svm']:
+			model.fit(trainX, trainY)
+			if options.grid and model_type == 'rf':
+				print("Best params for RF:")
+				print(model.best_params_)
+				model = model.best_estimator_
 			trainPredict = model.predict(trainX)
 			testPredict = model.predict(testX)
-			# invert predictions
-			trainPredict = scaler.inverse_transform(trainPredict)
-			trainY = scaler.inverse_transform([trainY])
-			testPredict = scaler.inverse_transform(testPredict)
-			testY = scaler.inverse_transform([testY])
-			# calculate root mean squared error
-			trainScore_mae = mean_absolute_error(trainY[0], trainPredict[:,0])
-			trainScore_rmse = math.sqrt(mean_squared_error(trainY[0], trainPredict[:,0]))
-			print("LSTM on {} training years".format(training_years))
-			print('Train Score: RMSE= ' + str (trainScore_rmse) + ' mae='+ str (trainScore_mae))
-			testScore_rmse = math.sqrt(mean_squared_error(testY[0], testPredict[:,0]))
-			testScore_mae = mean_absolute_error(testY[0], testPredict[:,0])
-			print('Test Score: RMSE= '+ str (testScore_rmse) + ' mae='+str (testScore_mae))
-			
-			train_loss = history_callback.history['loss']
-			val_loss = history_callback.history['val_loss']
+		if model_type == 'autoreg':
+			model = model.fit()
+			coef = model.params
+			# walk forward over time steps in test
+			window = 29
+			history = train[len(trainX)-window:]
+			history = [history[i] for i in range(len(history))]
+			testPredict = []
+			trainPredict = []
+			for t in tqdm(range(len(testX))):
+				length = len(history)
+				lag = [history[i] for i in range(length-window,length)]
+				yhat = coef[0]
+				for d in range(window):
+					yhat += coef[d+1] * lag[window-d-1]
+				obs = testX[t]
+				yhat = np.squeeze(yhat)
+				yhat = np.asscalar(yhat)
+				testPredict.append(yhat)
+				history.append(obs)
+			for t in tqdm(range(len(trainX))):
+				length = len(history)
+				lag = [history[i] for i in range(length-window,length)]
+				yhat = coef[0]
+				for d in range(window):
+					yhat += coef[d+1] * lag[window-d-1]
+				obs = trainX[t]
+				yhat = np.squeeze(yhat)
+				yhat = np.asscalar(yhat)
+				trainPredict.append(yhat)
+				history.append(obs)
 
-			plt.plot(train_loss)
-			plt.plot(val_loss)
-			plt.title('Long Short-term Memory - Model loss')
-			plt.ylabel('Loss')
-			plt.xlabel('Epoch')
-			plt.legend(['Training loss', 'Validation loss'], loc='upper right')
-			img_path = os.path.join(save_path,'{}_training_years_val_loss_'.format(training_years) + '_{}_{}'.format(prefix, index) + '_{}_'.format('LSTM') + '_testing_' + '.png')
-			plt.savefig(img_path)
-			plt.figure().clear()
-		else:
-			trainX = np.reshape(trainX, (trainX.shape[0], trainX.shape[1]))
-			testX = np.reshape(testX, (testX.shape[0], testX.shape[1]))
-			trainY = trainY.ravel()
-			testY = testY.ravel()
-			
-			if model_type == 'rf':
-				model = create_rf()
-			elif model_type == 'svm':
-				model = create_svm()
-			elif model_type == 'autoreg':
-				trainX = np.squeeze(trainX)
-				testX = np.squeeze(testX)
-				model = create_autoreg(trainX)
-			else:
-				raise("Model exeption")
+		# invert predictions
+		trainPredict = np.reshape(trainPredict, (-1,1))
+		testPredict = np.reshape(testPredict, (-1,1))
+		trainY = trainY.reshape((-1,1))
+		testY = testY.reshape((-1,1))
+		trainPredict = scaler.inverse_transform(trainPredict)
+		trainY = scaler.inverse_transform(trainY)
+		testPredict = scaler.inverse_transform(testPredict)
+		testY = scaler.inverse_transform(testY)
+		# calculate root mean squared error
+		trainScore_mae = mean_absolute_error(trainY, trainPredict)
+		trainScore_rmse = math.sqrt(mean_squared_error(trainY, trainPredict))
 
-			if model_type in ['rf', 'svm']:
-				model.fit(trainX, trainY)
-				if options.grid and model_type == 'rf':
-					print("Best params for RF:")
-					print(model.best_params_)
-					model = model.best_estimator_
-				trainPredict = model.predict(trainX)
-				testPredict = model.predict(testX)
-			if model_type == 'autoreg':
-				model = model.fit()
-				coef = model.params
-				# walk forward over time steps in test
-				window = 29
-				history = train[len(trainX)-window:]
-				history = [history[i] for i in range(len(history))]
-				testPredict = []
-				trainPredict = []
-				for t in range(len(testX)):
-					length = len(history)
-					lag = [history[i] for i in range(length-window,length)]
-					yhat = coef[0]
-					for d in range(window):
-						yhat += coef[d+1] * lag[window-d-1]
-					obs = testX[t]
-					yhat = np.squeeze(yhat)
-					yhat = np.asscalar(yhat)
-					testPredict.append(yhat)
-					history.append(obs)
-				for t in range(len(trainX)):
-					length = len(history)
-					lag = [history[i] for i in range(length-window,length)]
-					yhat = coef[0]
-					for d in range(window):
-						yhat += coef[d+1] * lag[window-d-1]
-					obs = trainX[t]
-					yhat = np.squeeze(yhat)
-					yhat = np.asscalar(yhat)
-					trainPredict.append(yhat)
-					history.append(obs)
+		if model_type == 'rf':
+			print("RANDOM FOREST on {} training years".format(training_years))
+		elif model_type == 'svm':
+			print("SVR on {} training years".format(training_years))
+		elif model_type == 'autoreg':
+			print("AutoReg on {} training years".format(training_years))
 
-			# invert predictions
-			trainPredict = np.reshape(trainPredict, (-1,1))
-			testPredict = np.reshape(testPredict, (-1,1))
-			trainY = trainY.reshape((-1,1))
-			testY = testY.reshape((-1,1))
-			trainPredict = scaler.inverse_transform(trainPredict)
-			trainY = scaler.inverse_transform(trainY)
-			testPredict = scaler.inverse_transform(testPredict)
-			testY = scaler.inverse_transform(testY)
-			# calculate root mean squared error
-			trainScore_mae = mean_absolute_error(trainY, trainPredict)
-			trainScore_rmse = math.sqrt(mean_squared_error(trainY, trainPredict))
-
-			if model_type == 'rf':
-				print("RANDOM FOREST on {} training years".format(training_years))
-			elif model_type == 'svm':
-				print("SVR on {} training years".format(training_years))
-			elif model_type == 'autoreg':
-				print("AutoReg on {} training years".format(training_years))
-
-			print('Train Score: RMSE= ' + str (trainScore_rmse) + ' mae='+ str (trainScore_mae))
-			testScore_rmse = math.sqrt(mean_squared_error(testY, testPredict))
-			testScore_mae = mean_absolute_error(testY, testPredict)
-			print('Test Score: RMSE= '+ str (testScore_rmse) + ' mae='+str (testScore_mae))
+		print('Train Score: RMSE= ' + str (trainScore_rmse) + ' mae='+ str (trainScore_mae))
+		testScore_rmse = math.sqrt(mean_squared_error(testY, testPredict))
+		testScore_mae = mean_absolute_error(testY, testPredict)
+		print('Test Score: RMSE= '+ str (testScore_rmse) + ' mae='+str (testScore_mae))
 
 		print("saving log to file")
 
@@ -292,27 +320,29 @@ def run(model_type, training_years=9, timesteps=1):
 			testPredict = testPredict.reshape(-1,1)
 		test_price = np.squeeze(scaler.inverse_transform(testX))
 		predicted_price = np.squeeze(testPredict)
-		real_date = np.delete(real_date, 0, 0)
-		real_date = np.delete(real_date, -1, 0)
+		if len(real_date) > 0:
+			real_date = np.delete(real_date, 0, 0)
+			real_date = np.delete(real_date, -1, 0)
 
-		df_stock = np.squeeze(np.dstack((real_date, np.squeeze(test_price), np.squeeze(predicted_price))))
-		df_stock = pd.DataFrame(df_stock, columns=['Date', 'Price', 'Predicted'])
-		stock = ColumnDataSource(data=dict(Date=[], Price=[], Predicted=[]))
-		stock.data = stock.from_df(df_stock)
-		p = plot_stock_price(stock)
-		print("")
+			df_stock = np.squeeze(np.dstack((real_date, np.squeeze(test_price), np.squeeze(predicted_price))))
+			df_stock = pd.DataFrame(df_stock, columns=['Date', 'Price', 'Predicted'])
+			stock = ColumnDataSource(data=dict(Date=[], Price=[], Predicted=[]))
+			stock.data = stock.from_df(df_stock)
+			p = plot_stock_price(stock)
+			print("")
 
 
 if __name__ == '__main__':
 	parser = OptionParser()
 	parser.add_option('-b','--batchsize', type="int",default = 128, help='specify the batch size')
 	parser.add_option('-e','--epoch', type="int",default = 200, help='specific number of epoch')
-	parser.add_option('-m','--model_type', default = 'rf', help='model type, support: lstm, svm, rf, autoreg')
-	parser.add_option('-y','--training_years',type="int", default = 9, help='number of training years, 9, 10, and 11')
-	parser.add_option('-t','--timesteps',type="int", default = 1, help='timestep for lstm, default = 1')
+	parser.add_option('-m','--model_type', default = 'lstm', help='model type, support: lstm, svm, rf, autoreg')
+	parser.add_option('-y','--training_years',type="int", default = 11, help='number of training years, 9, 10, and 11')
+	parser.add_option('-t','--timesteps',type="int", default = 3, help='timestep for lstm, default = 1')
 	parser.add_option('-g','--grid', type="int", default = 1, help='Grid search for optimal parameters, apply for RF')
 
 	(options, args) = parser.parse_args()
 	if options.model_type != 'lstm':
 		options.timesteps = 1
 	run(model_type=options.model_type, training_years=options.training_years, timesteps=options.timesteps)
+	# create_ds()
