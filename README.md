@@ -2,7 +2,7 @@
 
 This code is the implementation of the paper **An Effective Way for Taiwanese Stock Price prediction: Boosting the performance with Machine Learning Techniques**
 
-Please cite this articale, if the code can help you
+Please cite this articale, if the code can help you.
 
 Nguyen HT, Tran TB, Bui PHD. An effective way for Taiwanese stock price prediction: Boosting the performance with machine learning techniques. Concurrency Computat Pract Exper. 2021;e6437. https://doi.org/10.1002/cpe.6437
 
