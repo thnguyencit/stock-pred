@@ -2,6 +2,23 @@
 
 This code is the implementation of the paper **An Effective Way for Taiwanese Stock Price prediction: Boosting the performance with Machine Learning Techniques**
 
+Please cite this articale, if the code can help you
+
+Nguyen HT, Tran TB, Bui PHD. An effective way for Taiwanese stock price prediction: Boosting the performance with machine learning techniques. Concurrency Computat Pract Exper. 2021;e6437. https://doi.org/10.1002/cpe.6437
+
+or 
+```
+@article{Nguyen2021,
+  doi = {10.1002/cpe.6437},
+  url = {https://doi.org/10.1002/cpe.6437},
+  year = {2021},
+  month = jun,
+  publisher = {Wiley},
+  author = {Hai T. Nguyen and Toan B. Tran and Phuong H. D. Bui},
+  title = {An effective way for Taiwanese stock price prediction: Boosting the performance with machine learning techniques},
+  journal = {Concurrency and Computation: Practice and Experience}
+}
+```
 ## Installation
 
 Python version 3.6 and install the dependencies:
