@@ -45,4 +45,5 @@ The explanation of the parameters is explained as follow:
 -t: timesteps, the number of timestep for LSTM, the default value is 1.
 ```
 
+![](https://komarev.com/ghpvc/?username=thnguyencit)
 
